@@ -1,0 +1,1 @@
+ALTER TABLE public.habits ADD COLUMN reminder_time time NULL;
