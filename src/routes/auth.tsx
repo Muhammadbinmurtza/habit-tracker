@@ -64,13 +64,22 @@ function AuthPage() {
       style={{ background: "var(--background)" }}
     >
       <div className="w-full max-w-md">
-        <div className="text-center mb-10">
-          <h1 className="text-5xl font-serif italic tracking-tight text-foreground">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl sm:text-5xl font-serif italic tracking-tight text-foreground">
             Today's Rhythms
           </h1>
           <p className="mt-3 text-sm text-muted-foreground">
-            A quiet space for daily habits.
+            {mode === "signin"
+              ? "Welcome back. Your rituals are waiting."
+              : "Start your first ritual today."}
           </p>
+        </div>
+
+        <div className="flex flex-wrap justify-center gap-6 mb-8 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">📊 Track daily</span>
+          <span className="flex items-center gap-1.5">🔥 Build streaks</span>
+          <span className="flex items-center gap-1.5">📈 View heatmap</span>
+          <span className="flex items-center gap-1.5">💡 Get insights</span>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">

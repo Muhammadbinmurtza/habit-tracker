@@ -98,17 +98,17 @@ function TodayPage() {
                 Today's rhythms
               </h1>
             </div>
-            <nav className="flex gap-2 sm:gap-2.5 text-sm font-medium tracking-wide mb-2">
+            <nav className="flex flex-wrap gap-1.5 sm:gap-2.5 text-xs sm:text-sm font-medium tracking-wide mb-2">
               <Link
                 to="/habits"
-                className="inline-flex items-center justify-center text-center min-w-[88px] px-4 py-2 rounded-full border-2 border-foreground/25 bg-foreground/10 text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors"
+                className="inline-flex items-center justify-center text-center min-w-[72px] sm:min-w-[88px] px-3 sm:px-4 py-2 rounded-full border-2 border-foreground/25 bg-foreground/10 text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors"
               >
                 Habits
               </Link>
 
               <Link
                 to="/insights"
-                className="px-4 py-2 rounded-full border-2 border-foreground/25 bg-foreground/10 text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors flex items-center gap-1"
+                className="px-3 sm:px-4 py-2 rounded-full border-2 border-foreground/25 bg-foreground/10 text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors flex items-center gap-1"
               >
                 Insights <span className="text-base leading-none">→</span>
               </Link>

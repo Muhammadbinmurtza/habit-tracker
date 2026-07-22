@@ -166,7 +166,7 @@ function InsightsPage() {
         </header>
 
         {/* Headline stats */}
-        <section className="grid grid-cols-3 gap-4 mb-12">
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
           <Stat
             label="This month"
             value={stats.thisMonth}
@@ -242,7 +242,7 @@ function InsightsPage() {
           {noData ? (
             <p className="text-sm text-muted-foreground italic">No data yet.</p>
           ) : (
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-7 gap-1 sm:gap-2">
               {stats.dowCount.map((count, i) => {
                 const isBest = i === stats.bestDow;
                 const isWorst = count > 0 && i === stats.worstDow;

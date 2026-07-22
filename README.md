@@ -30,6 +30,8 @@ The app runs at `http://localhost:3000`.
 | `npm run preview` | Preview production build |
 | `npm run lint` | Run ESLint |
 | `npm run format` | Format with Prettier |
+| `npm test` | Run tests |
+| `npm run test:watch` | Run tests in watch mode |
 
 ## Project Structure
 
@@ -66,4 +68,16 @@ src/
 - **Insights** — per-habit stats, monthly charts, AI recommendations
 - **Frequency scheduling** — daily, weekdays, or X times per week
 - **Reminders** — browser notifications at set times
-- **Authentication** — email/password or Google sign-in
+- **Authentication** — email/password
+- **Local recommendations** — AI-free personalized insights generated from your data
+- **Tests** — 13 unit tests for streak and date utilities
+
+## Docker
+
+Run the app in a container:
+
+```bash
+docker compose up --build
+```
+
+Opens at `http://localhost:3000`.
