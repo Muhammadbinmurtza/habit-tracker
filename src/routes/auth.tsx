@@ -81,10 +81,12 @@ function AuthPage() {
       }
       navigate({ to: "/onboarding", replace: true });
     } catch (err: any) {
-      const raw = JSON.stringify(Object.fromEntries(
-        Object.getOwnPropertyNames(err).map((k) => [k, (err as any)[k]]),
-      ));
-      setError(raw || "Unknown error");
+      const msg = err?.message || err?.error_description || err?.msg;
+      setError(
+        msg && msg !== "{}" && msg !== "[object Object]"
+          ? msg
+          : "Something went wrong. Please try again.",
+      );
     } finally {
       setBusy(false);
     }
