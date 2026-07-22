@@ -77,6 +77,26 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      {
+        name: "description",
+        content:
+          "Today's Rhythms — a warm, editorial-style habit tracker. Daily check-ins, streak tracking, heatmaps, and personalized insights.",
+      },
+      { name: "theme-color", content: "oklch(0.19 0.006 70)" },
+      { name: "robots", content: "index, follow" },
+      { property: "og:title", content: "Today's Rhythms — A Quiet Habit Tracker" },
+      {
+        property: "og:description",
+        content:
+          "A warm, single-column journal for daily rituals. Track streaks, see your rhythm, and reflect with gentle insight.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Today's Rhythms" },
+      {
+        name: "twitter:description",
+        content: "A calm, editorial habit tracker. Build streaks, track daily rituals, and watch your rhythm grow.",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },

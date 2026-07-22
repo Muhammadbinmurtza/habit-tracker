@@ -80,8 +80,13 @@ function AuthPage() {
         }
       }
       navigate({ to: "/onboarding", replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } catch (err: any) {
+      const msg =
+        err?.message ||
+        err?.error_description ||
+        err?.msg ||
+        (typeof err === "string" ? err : "Something went wrong.");
+      setError(msg === "{}" || !msg ? "Something went wrong. Please try again." : msg);
     } finally {
       setBusy(false);
     }
