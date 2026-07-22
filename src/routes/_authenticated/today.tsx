@@ -1,13 +1,19 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { listHabits, listLogs, toggleLog } from "@/lib/habits.functions";
 import { currentStreak, todayLocal, addDays, formatLocal } from "@/lib/streaks";
 import { QuickAddHabit } from "@/components/QuickAddHabit";
 
 export const Route = createFileRoute("/_authenticated/today")({
+  beforeLoad: async () => {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user?.user_metadata?.onboarding_complete) {
+      throw redirect({ to: "/onboarding" });
+    }
+  },
   head: () => ({
     meta: [
       { title: "Today — Today's Rhythms" },
@@ -29,6 +35,16 @@ function TodayPage() {
   const toggleFn = useServerFn(toggleLog);
   const today = todayLocal();
   const [showAdd, setShowAdd] = useState(false);
+  const [userName, setUserName] = useState("");
+  const [confetti, setConfetti] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.user_metadata?.display_name) {
+        setUserName(data.user.user_metadata.display_name);
+      }
+    });
+  }, []);
 
   const { data: habits = [] } = useQuery({
     queryKey: ["habits"],
@@ -57,6 +73,16 @@ function TodayPage() {
   const total = habits.length;
   const pct = total === 0 ? 0 : Math.round((completedToday / total) * 100);
 
+  const prevPct = useRef(pct);
+  useEffect(() => {
+    if (pct === 100 && total > 0 && prevPct.current < 100) {
+      setConfetti(true);
+      const t = setTimeout(() => setConfetti(false), 2500);
+      return () => clearTimeout(t);
+    }
+    prevPct.current = pct;
+  }, [pct, total]);
+
   async function signOut() {
     await qc.cancelQueries();
     qc.clear();
@@ -80,25 +106,43 @@ function TodayPage() {
     day: "numeric",
   });
 
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  const bestStreakAll = useMemo(() => {
+    let best = 0;
+    for (const h of habits) {
+      const s = currentStreak(logsByHabit.get(h.id) ?? [], today);
+      if (s > best) best = s;
+    }
+    return best;
+  }, [habits, logsByHabit, today]);
+
   const RING = 192;
   const R = 88;
   const CIRC = 2 * Math.PI * R;
+  const allDone = pct === 100 && total > 0;
 
   return (
     <main className="min-h-screen px-6 py-10 sm:py-16" style={{ background: "var(--background)" }}>
-      <div className="mx-auto max-w-xl space-y-16">
+      <div className="mx-auto max-w-xl space-y-10 sm:space-y-16">
         {/* Header */}
         <header>
-          <div className="flex items-end justify-between gap-4">
+          <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-[0.2em] font-medium text-muted-foreground">
+              <p className="text-xs uppercase tracking-[0.2em] font-medium text-muted-foreground">
                 {displayDate}
               </p>
-              <h1 className="font-serif italic text-5xl sm:text-6xl leading-tight tracking-tight text-foreground">
-                Today's rhythms
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="font-serif italic text-4xl sm:text-5xl leading-tight tracking-tight text-foreground">
+                  {userName ? `${greet}, ${userName}` : "Today's rhythms"}
+                </h1>
+                {userName && (
+                  <span className="text-2xl sm:text-3xl">{hour < 12 ? "🌤" : hour < 18 ? "☀️" : "🌙"}</span>
+                )}
+              </div>
             </div>
-            <nav className="flex flex-wrap gap-1.5 sm:gap-2.5 text-xs sm:text-sm font-medium tracking-wide mb-2">
+            <nav className="flex flex-wrap gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium tracking-wide shrink-0">
               <Link
                 to="/habits"
                 className="inline-flex items-center justify-center text-center min-w-[72px] sm:min-w-[88px] px-3 sm:px-4 py-2 rounded-full border-2 border-foreground/25 bg-foreground/10 text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors"
@@ -122,9 +166,74 @@ function TodayPage() {
           </div>
         </header>
 
+        {/* Quick stats */}
+        {total > 0 && (
+          <div className="grid grid-cols-3 gap-3">
+            <div
+              className="rounded-2xl border p-4 text-center transition-all duration-300 hover:-translate-y-0.5"
+              style={{
+                background: "var(--card)",
+                borderColor: "var(--border)",
+                boxShadow: "var(--shadow-glow)",
+              }}
+            >
+              <p className="text-2xl font-serif italic text-foreground">{completedToday}</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Done</p>
+            </div>
+            <div
+              className="rounded-2xl border p-4 text-center transition-all duration-300 hover:-translate-y-0.5"
+              style={{
+                background: "var(--card)",
+                borderColor: "var(--border)",
+                boxShadow: "var(--shadow-glow)",
+              }}
+            >
+              <p className="text-2xl font-serif italic text-foreground">{total}</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Total</p>
+            </div>
+            <div
+              className="rounded-2xl border p-4 text-center transition-all duration-300 hover:-translate-y-0.5"
+              style={{
+                background: "var(--card)",
+                borderColor: "var(--border)",
+                boxShadow: "var(--shadow-glow)",
+              }}
+            >
+              <p className="text-2xl font-serif italic text-foreground">{bestStreakAll}d</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Best streak</p>
+            </div>
+          </div>
+        )}
+
         {/* Progress ring — sculptural centerpiece */}
-        <section className="flex flex-col items-center justify-center py-4">
-          <div className="relative" style={{ width: RING, height: RING }}>
+        <section className="flex flex-col items-center justify-center py-2 relative">
+          {confetti &&
+            Array.from({ length: 30 }).map((_, i) => {
+              const colors = ["var(--primary)", "var(--accent)", "var(--chart-3)", "var(--chart-5)", "#ff6b6b"];
+              return (
+                <div
+                  key={i}
+                  className="confetti-piece"
+                  style={{
+                    left: `${30 + Math.random() * 40}%`,
+                    top: `${-10}px`,
+                    animationDelay: `${Math.random() * 0.8}s`,
+                    animationDuration: `${1.2 + Math.random() * 1.5}s`,
+                    background: colors[i % colors.length],
+                    transform: `rotate(${Math.random() * 360}deg)`,
+                  }}
+                />
+              );
+            })}
+          <div
+            className="relative"
+            style={{
+              width: RING,
+              height: RING,
+              filter: allDone ? "drop-shadow(0 0 20px var(--primary))" : "none",
+              transition: "filter 0.5s ease",
+            }}
+          >
             <svg width={RING} height={RING} className="-rotate-90">
               <circle
                 cx={RING / 2}
@@ -139,8 +248,8 @@ function TodayPage() {
                 cy={RING / 2}
                 r={R}
                 fill="transparent"
-                stroke="var(--primary)"
-                strokeWidth="2"
+                stroke={allDone ? "var(--primary)" : "var(--primary)"}
+                strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeDasharray={CIRC}
                 strokeDashoffset={CIRC - (pct / 100) * CIRC}
@@ -151,7 +260,7 @@ function TodayPage() {
               <span className="font-serif italic text-4xl text-foreground">{pct}%</span>
             </div>
           </div>
-          <p className="mt-8 text-sm tracking-tight text-muted-foreground">
+          <p className="mt-6 text-sm tracking-tight text-muted-foreground">
             {total === 0 ? (
               <>
                 No habits yet.{" "}
@@ -160,10 +269,11 @@ function TodayPage() {
                 </Link>
                 .
               </>
+            ) : allDone ? (
+              <span className="text-foreground font-medium">✨ All rituals complete. Well done!</span>
             ) : (
               <>
                 {completedToday} of {total} done today
-                {pct === 100 && ". All rituals complete."}
               </>
             )}
           </p>
@@ -171,17 +281,25 @@ function TodayPage() {
 
         {/* Rhythm heatmap */}
         <section className="space-y-4">
-          <div className="flex items-center gap-4">
-            <h2 className="text-[10px] uppercase tracking-[0.2em] font-semibold text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
+            </svg>
+            <h2 className="text-[11px] uppercase tracking-[0.2em] font-semibold text-muted-foreground">
               Rhythm
             </h2>
-            <div className="h-px flex-1 bg-border opacity-60" />
+            <div className="h-px flex-1 bg-border opacity-40" />
             <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
               {logs.length} check-ins
             </span>
           </div>
           {logs.length > 4 ? (
-            <Heatmap grid={heatmap} />
+            <div
+              className="rounded-2xl border p-5"
+              style={{ background: "var(--card)", borderColor: "var(--border)" }}
+            >
+              <Heatmap grid={heatmap} />
+            </div>
           ) : (
             <div
               className="rounded-2xl border border-dashed py-14 px-6 text-center"
@@ -201,7 +319,7 @@ function TodayPage() {
                     {Array.from({ length: 7 }).map((_, j) => (
                       <div
                         key={j}
-                        className="w-[11px] h-[11px] rounded-[2px]"
+                className="w-[13px] h-[13px] rounded-[2px]"
                         style={{
                           background:
                             i === 3 && j === 3
@@ -220,24 +338,63 @@ function TodayPage() {
         {/* Monthly Calendar */}
         {total > 0 && (
           <section className="space-y-4">
-            <div className="flex items-center gap-4">
-              <h2 className="text-[10px] uppercase tracking-[0.2em] font-semibold text-muted-foreground">
+            <div className="flex items-center gap-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              <h2 className="text-[11px] uppercase tracking-[0.2em] font-semibold text-muted-foreground">
                 Calendar
               </h2>
-              <div className="h-px flex-1 bg-border opacity-60" />
+              <div className="h-px flex-1 bg-border opacity-40" />
             </div>
             <CalendarView habits={habits} logsByHabit={logsByHabit} today={today} />
           </section>
         )}
 
+        {/* Daily Quote */}
+        {total > 0 && (
+          <div
+            className="rounded-2xl border p-5 text-center"
+            style={{
+              background:
+                "color-mix(in oklab, var(--primary) 8%, var(--card))",
+              borderColor:
+                "color-mix(in oklab, var(--primary) 20%, var(--border))",
+              boxShadow: "var(--shadow-glow)",
+            }}
+          >
+            <p className="font-serif italic text-base sm:text-lg text-foreground/80 leading-relaxed">
+              {(() => {
+                const quotes = [
+                  "Small daily improvements are the key to staggering long-term results.",
+                  "You do not rise to the level of your goals. You fall to the level of your systems.",
+                  "Motivation is what gets you started. Habit is what keeps you going.",
+                  "The secret of your future is hidden in your daily routine.",
+                  "It's not what we do once in a while that shapes our lives, but what we do consistently.",
+                  "We are what we repeatedly do. Excellence, then, is not an act, but a habit.",
+                  "Habit is a cable; we weave a thread of it each day, and at last we cannot break it.",
+                  "Success is the sum of small efforts, repeated day in and day out.",
+                ];
+                return quotes[new Date().getDate() % quotes.length];
+              })()}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-2 tracking-wide">
+              Daily inspiration
+            </p>
+          </div>
+        )}
+
         {/* Weekly Trend Chart */}
         {total > 0 && (
           <section className="space-y-4">
-            <div className="flex items-center gap-4">
-              <h2 className="text-[10px] uppercase tracking-[0.2em] font-semibold text-muted-foreground">
+            <div className="flex items-center gap-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+              <h2 className="text-[11px] uppercase tracking-[0.2em] font-semibold text-muted-foreground">
                 Trend
               </h2>
-              <div className="h-px flex-1 bg-border opacity-60" />
+              <div className="h-px flex-1 bg-border opacity-40" />
               <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
                 Weekly completion
               </span>
@@ -248,15 +405,40 @@ function TodayPage() {
 
         {/* Rituals list */}
         <section className="space-y-6">
-          <div className="flex items-center gap-4">
-            <h2 className="text-[10px] uppercase tracking-[0.2em] font-semibold text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--muted-foreground)"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
+            <h2 className="text-[11px] uppercase tracking-[0.2em] font-semibold text-muted-foreground">
               Rituals
             </h2>
-            <div className="h-px flex-1 bg-border opacity-60" />
+            <div className="h-px flex-1 bg-border opacity-40" />
+            {completedToday < total && total > 0 && (
+              <button
+                onClick={() => {
+                  const pending = habits.filter(
+                    (h) => !(logsByHabit.get(h.id)?.has(today) ?? false),
+                  );
+                  pending.forEach((h) => toggle.mutate(h.id));
+                }}
+                className="text-[10px] uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
+              >
+                Complete all
+              </button>
+            )}
             <button
               onClick={() => setShowAdd(true)}
               aria-label="Add ritual"
-              className="w-8 h-8 rounded-full border border-foreground/25 bg-foreground/5 text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors flex items-center justify-center text-lg leading-none"
+              className="w-7 h-7 rounded-full border border-foreground/25 bg-foreground/5 text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors flex items-center justify-center text-base leading-none"
             >
               +
             </button>
@@ -269,12 +451,13 @@ function TodayPage() {
               return (
                 <li key={h.id} className="group">
                   <div
-                    className="flex items-center gap-5 p-6 rounded-2xl border transition-all duration-500 hover:-translate-y-0.5"
+                    className="flex items-center gap-5 p-6 rounded-2xl border transition-all duration-500 hover:-translate-y-1"
                     style={{
                       background: done
                         ? "color-mix(in oklab, var(--primary) 10%, var(--card))"
                         : "var(--card)",
                       borderColor: "var(--border)",
+                      boxShadow: "var(--shadow-glow)",
                     }}
                   >
                     <button
@@ -385,10 +568,17 @@ function TodayPage() {
         </section>
 
         {/* Flourish */}
-        <footer className="pt-4 text-center">
-          <span className="inline-block w-1 h-1 rounded-full bg-border mx-1" />
-          <span className="inline-block w-1 h-1 rounded-full bg-border mx-1" />
-          <span className="inline-block w-1 h-1 rounded-full bg-border mx-1" />
+        <footer className="pt-8 text-center space-y-3">
+          <div className="flex items-center justify-center gap-3">
+            <span className="inline-block w-8 h-px bg-border opacity-40" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-border" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-border" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-border" />
+            <span className="inline-block w-8 h-px bg-border opacity-40" />
+          </div>
+          <p className="text-[10px] text-muted-foreground/50 tracking-wide">
+            Today's Rhythms &middot; small steps, every day
+          </p>
         </footer>
       </div>
       {showAdd && <QuickAddHabit onClose={() => setShowAdd(false)} />}
@@ -492,7 +682,7 @@ function CalendarView({
   return (
     <div
       className="rounded-2xl border p-3 sm:p-4"
-      style={{ borderColor: "var(--border)", background: "var(--card)" }}
+      style={{ borderColor: "var(--border)", background: "var(--card)", boxShadow: "var(--shadow-glow)" }}
     >
       <div className="text-xs font-serif italic text-foreground mb-1.5">{monthLabel}</div>
       <div className="grid grid-cols-7 gap-[2px]">
@@ -593,39 +783,34 @@ function TrendChart({
   return (
     <div
       className="rounded-2xl border p-5"
-      style={{ background: "var(--card)", borderColor: "var(--border)" }}
+      style={{
+        background: "var(--card)",
+        borderColor: "var(--border)",
+        boxShadow: "var(--shadow-glow)",
+      }}
     >
-      <div className="flex items-end gap-2 h-40">
+      <div className="flex items-end gap-1.5 sm:gap-2 h-48">
         {weeks.map((w, i) => {
           const pct = Math.round(w.rate * 100);
-          const barH = Math.max(4, (w.rate / maxRate) * 100);
+          const barH = Math.max(6, (w.rate / maxRate) * 100);
           const isLatest = i === weeks.length - 1;
           return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
-              <span className="text-[10px] text-foreground font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                {pct}%
-              </span>
-              <div className="w-full flex-1 flex items-end relative">
+            <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
+              <span className="text-[10px] font-bold text-foreground">{pct}%</span>
+              <div className="w-full flex-1 flex items-end">
                 <div
-                  className="w-full rounded-t transition-all duration-500 group-hover:opacity-80"
+                  className="w-full rounded-t transition-all duration-500"
                   style={{
                     height: `${barH}%`,
                     background: isLatest
-                      ? "var(--primary)"
-                      : `color-mix(in oklab, var(--primary) ${Math.max(30, pct)}%, var(--muted))`,
-                    minHeight: pct > 0 ? "4px" : "1px",
+                      ? "var(--gradient-warm)"
+                      : pct >= 100
+                        ? "var(--primary)"
+                        : `color-mix(in oklab, var(--primary) ${Math.max(20, pct * 0.8)}%, var(--muted))`,
+                    minHeight: pct > 0 ? "6px" : "2px",
+                    boxShadow: isLatest ? "0 0 12px -2px var(--primary)" : "none",
                   }}
                 />
-                {pct > 0 && pct < 100 && (
-                  <div
-                    className="absolute bottom-0 w-full rounded-t"
-                    style={{
-                      height: `${(1 - w.rate / maxRate) * 100}%`,
-                      background: "var(--card)",
-                      opacity: 0.6,
-                    }}
-                  />
-                )}
               </div>
               <span className="text-[9px] text-muted-foreground leading-tight text-center">
                 {w.label}
@@ -639,7 +824,10 @@ function TrendChart({
         style={{ borderColor: "var(--border)" }}
       >
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-          <span className="inline-block w-3 h-3 rounded" style={{ background: "var(--primary)" }} />
+          <span
+            className="inline-block w-3 h-3 rounded"
+            style={{ background: "var(--gradient-warm)" }}
+          />
           Completion rate
         </div>
         <span className="text-[10px] text-muted-foreground">
@@ -700,12 +888,12 @@ function Heatmap({ grid }: { grid: { date: string; count: number }[][] }) {
         <div key={wi} className="flex flex-col gap-[3px]">
           {week.map((cell) => {
             const isFuture = cell.date > today;
-            const intensity = cell.count === 0 ? 0 : Math.min(4, Math.ceil((cell.count / max) * 4));
+            const intensity = cell.count === 0 ? 0 : Math.min(5, Math.ceil((cell.count / max) * 5));
             const bg = isFuture
               ? "transparent"
               : intensity === 0
                 ? "var(--muted)"
-                : `color-mix(in oklab, var(--primary) ${intensity * 22}%, var(--muted))`;
+                : `color-mix(in oklab, var(--primary) ${intensity * 18}%, var(--muted))`;
             return (
               <div
                 key={cell.date}

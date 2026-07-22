@@ -1,6 +1,6 @@
 # Today's Rhythms
 
-A warm, editorial-style habit tracker built with TanStack Start and Supabase.
+A warm, editorial-style habit tracker built with TanStack Start, Supabase, and Docker.
 
 ## Tech Stack
 

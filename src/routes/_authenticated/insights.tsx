@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo } from "react";
@@ -7,6 +8,12 @@ import { getRecommendations } from "@/lib/recommendations.functions";
 import { currentStreak, longestStreak, todayLocal, addDays, formatLocal } from "@/lib/streaks";
 
 export const Route = createFileRoute("/_authenticated/insights")({
+  beforeLoad: async () => {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user?.user_metadata?.onboarding_complete) {
+      throw redirect({ to: "/onboarding" });
+    }
+  },
   head: () => ({
     meta: [
       { title: "Insights — Today's Rhythms" },
@@ -507,7 +514,7 @@ function Heatmap({ grid }: { grid: { date: string; count: number }[][] }) {
               <div
                 key={cell.date}
                 title={`${cell.date}: ${cell.count}`}
-                className="w-[11px] h-[11px] rounded-[2px]"
+                className="w-[13px] h-[13px] rounded-[2px]"
                 style={{ background: bg, opacity: isFuture ? 0.3 : 1 }}
               />
             );

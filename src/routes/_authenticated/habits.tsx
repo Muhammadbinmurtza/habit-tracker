@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -15,6 +16,12 @@ import {
 } from "@/lib/useHabitReminders";
 
 export const Route = createFileRoute("/_authenticated/habits")({
+  beforeLoad: async () => {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user?.user_metadata?.onboarding_complete) {
+      throw redirect({ to: "/onboarding" });
+    }
+  },
   head: () => ({
     meta: [
       { title: "Habits — Today's Rhythms" },
