@@ -405,7 +405,9 @@ function InsightsPage() {
             </div>
           )}
           {rec.error && (
-            <p className="text-sm text-destructive">Couldn't load guidance right now.</p>
+            <p className="text-sm text-destructive">
+              {rec.error instanceof Error ? rec.error.message : "Couldn't load guidance right now."}
+            </p>
           )}
           {rec.data && (
             <ul className="space-y-3">
