@@ -6,6 +6,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { listHabits, listLogs, toggleLog } from "@/lib/habits.functions";
 import { currentStreak, todayLocal, addDays, formatLocal } from "@/lib/streaks";
 import { QuickAddHabit } from "@/components/QuickAddHabit";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useStreakFreeze } from "@/lib/useStreakFreeze";
+import { FreezeDialog } from "@/components/FreezeDialog";
+import { TableView } from "@/components/TableView";
+
+type ViewMode = "board" | "table" | "calendar";
+
+function loadViewPreference(): ViewMode {
+  if (typeof window === "undefined") return "board";
+  const v = localStorage.getItem("habit-view");
+  if (v === "table" || v === "calendar") return v;
+  return "board";
+}
 
 export const Route = createFileRoute("/_authenticated/today")({
   beforeLoad: async () => {
@@ -37,6 +50,14 @@ function TodayPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [userName, setUserName] = useState("");
   const [confetti, setConfetti] = useState(false);
+  const [freezeTarget, setFreezeTarget] = useState<{ id: string; name: string } | null>(null);
+  const freeze = useStreakFreeze();
+  const [view, setView] = useState<ViewMode>(loadViewPreference);
+
+  const setViewPersisted = (v: ViewMode) => {
+    setView(v);
+    localStorage.setItem("habit-view", v);
+  };
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -46,11 +67,18 @@ function TodayPage() {
     });
   }, []);
 
-  const { data: habits = [] } = useQuery({
+  const {
+    data: habits = [],
+    isLoading: habitsLoading,
+    isError: habitsError,
+  } = useQuery({
     queryKey: ["habits"],
     queryFn: () => habitsFn(),
   });
-  const { data: logs = [] } = useQuery({
+  const {
+    data: logs = [],
+    isLoading: logsLoading,
+  } = useQuery({
     queryKey: ["logs"],
     queryFn: () => logsFn(),
   });
@@ -126,6 +154,21 @@ function TodayPage() {
   return (
     <main className="min-h-screen px-6 py-10 sm:py-16" style={{ background: "var(--background)" }}>
       <div className="mx-auto max-w-xl space-y-10 sm:space-y-16">
+        {habitsLoading || logsLoading ? (
+          <div className="space-y-8 pt-6">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-10 w-72" />
+            <Skeleton className="h-48 w-48 mx-auto rounded-full" />
+            <Skeleton className="h-32 w-full rounded-2xl" />
+            <Skeleton className="h-24 w-full rounded-2xl" />
+            <Skeleton className="h-20 w-full rounded-2xl" />
+          </div>
+        ) : habitsError ? (
+          <div className="text-center py-20">
+            <p className="text-sm text-destructive">Failed to load habits. Please refresh.</p>
+          </div>
+        ) : (
+          <>
         {/* Header */}
         <header>
           <div className="flex items-start justify-between gap-4">
@@ -209,7 +252,7 @@ function TodayPage() {
         <section className="flex flex-col items-center justify-center py-2 relative">
           {confetti &&
             Array.from({ length: 30 }).map((_, i) => {
-              const colors = ["var(--primary)", "var(--accent)", "var(--chart-3)", "var(--chart-5)", "#ff6b6b"];
+              const colors = ["var(--primary)", "var(--accent)", "var(--chart-3)", "var(--chart-5)", "var(--accent)"];
               return (
                 <div
                   key={i}
@@ -257,7 +300,9 @@ function TodayPage() {
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="font-serif italic text-4xl text-foreground">{pct}%</span>
+              <span className="font-serif italic text-4xl text-foreground">
+                {pct}%
+              </span>
             </div>
           </div>
           <p className="mt-6 text-sm tracking-tight text-muted-foreground">
@@ -406,6 +451,22 @@ function TodayPage() {
         {/* Rituals list */}
         <section className="space-y-6">
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-0 rounded-full border p-0.5" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+              {(["board", "table", "calendar"] as ViewMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setViewPersisted(m)}
+                  className="px-3 py-1.5 text-xs font-medium rounded-full transition-colors uppercase tracking-wider"
+                  style={{
+                    background: view === m ? "var(--primary)" : "transparent",
+                    color: view === m ? "var(--primary-foreground)" : "var(--muted-foreground)",
+                    fontFamily: view === m ? "var(--font-sans)" : "var(--font-sans)",
+                  }}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
             <svg
               width="16"
               height="16"
@@ -421,14 +482,37 @@ function TodayPage() {
             <h2 className="text-[11px] uppercase tracking-[0.2em] font-semibold text-muted-foreground">
               Rituals
             </h2>
+            <div className="flex items-center gap-1.5">
+              {Array.from({ length: 2 }).map((_, i) => {
+                const used = i >= freeze.available;
+                return (
+                  <div
+                    key={i}
+                    className="w-2 h-2 rounded-full"
+                    style={{
+                      background: used ? "transparent" : "var(--primary)",
+                      border: used ? "1px solid var(--border)" : "none",
+                      opacity: used ? 0.5 : 1,
+                    }}
+                    title={used ? "Freeze used" : "Freeze available"}
+                  />
+                );
+              })}
+              {freeze.resetIn > 0 && freeze.available === 0 && (
+                <span className="font-mono text-[10px] text-muted-foreground ml-1">
+                  Resets in {freeze.resetIn}d
+                </span>
+              )}
+            </div>
             <div className="h-px flex-1 bg-border opacity-40" />
             {completedToday < total && total > 0 && (
               <button
-                onClick={() => {
+                onClick={async () => {
                   const pending = habits.filter(
                     (h) => !(logsByHabit.get(h.id)?.has(today) ?? false),
                   );
-                  pending.forEach((h) => toggle.mutate(h.id));
+                  await Promise.all(pending.map((h) => toggleFn({ data: { habitId: h.id, date: today } })));
+                  qc.invalidateQueries({ queryKey: ["logs"] });
                 }}
                 className="text-[10px] uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
               >
@@ -444,6 +528,86 @@ function TodayPage() {
             </button>
           </div>
 
+          {view === "table" ? (
+            <TableView habits={habits} logsByHabit={logsByHabit} today={today} onToggle={(habitId, date) => toggleFn({ data: { habitId, date } }).then(() => qc.invalidateQueries({ queryKey: ["logs"] }))} />
+          ) : (
+          <>
+          {habits.length > 0 && habits.length <= 6 ? (
+            /* Horizontal cards — ≤6 habits */
+            <div className="flex flex-wrap gap-3">
+              {habits.map((h) => {
+                const done = logsByHabit.get(h.id)?.has(today) ?? false;
+                const streak = currentStreak(logsByHabit.get(h.id) ?? [], today);
+                return (
+                  <div
+                    key={h.id}
+                    className="relative flex flex-col justify-between p-4 transition-all duration-300"
+                    style={{
+                      width: 160,
+                      height: 132,
+                      borderRadius: "var(--radius-xl, 1rem)",
+                      background: "var(--card)",
+                      border: `1px solid ${done ? h.color + "99" : "var(--border)"}`,
+                      boxShadow: done ? "var(--shadow-glow)" : "none",
+                    }}
+                  >
+                    {/* Top: icon + streak */}
+                    <div className="flex items-start justify-between">
+                      <div className="w-9 h-9 flex items-center justify-center rounded-lg text-lg"
+                        style={{ background: "color-mix(in oklab, var(--primary) 12%, var(--muted))" }}>
+                        {h.emoji}
+                      </div>
+                      {streak > 0 && (
+                        <span className="font-mono text-xs font-medium" style={{ color: "var(--primary)" }}>
+                          🔥 {streak}d
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Middle: name */}
+                    <p
+                      className="text-sm font-medium leading-tight mt-2"
+                      style={{
+                        color: done ? "var(--muted-foreground)" : "var(--foreground)",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {h.name}
+                    </p>
+
+                    {/* Bottom: check-in pill */}
+                    <button
+                      onClick={() => {
+                        if (done && freeze.available > 0) setFreezeTarget({ id: h.id, name: h.name });
+                        else toggle.mutate(h.id);
+                      }}
+                      disabled={toggle.isPending}
+                      className="w-full flex items-center justify-center gap-1.5 rounded-full text-xs font-medium transition-all duration-200 active:scale-95 mt-2"
+                      style={{
+                        height: 32,
+                        border: done ? "none" : "1px solid var(--border)",
+                        background: done ? "var(--primary)" : "transparent",
+                        color: done ? "var(--primary-foreground)" : "var(--muted-foreground)",
+                      }}
+                    >
+                      {done ? (
+                        <>
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6L5 8.5L9.5 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          Done
+                        </>
+                      ) : (
+                        "Check in"
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Vertical list — >6 habits */
           <ul className="space-y-3">
             {habits.map((h) => {
               const done = logsByHabit.get(h.id)?.has(today) ?? false;
@@ -461,7 +625,13 @@ function TodayPage() {
                     }}
                   >
                     <button
-                      onClick={() => toggle.mutate(h.id)}
+                      onClick={() => {
+                        if (done && freeze.available > 0) {
+                          setFreezeTarget({ id: h.id, name: h.name });
+                        } else {
+                          toggle.mutate(h.id);
+                        }
+                      }}
                       disabled={toggle.isPending}
                       className="relative flex-shrink-0 w-8 h-8 rounded-full border flex items-center justify-center transition-all duration-200 active:scale-90"
                       style={{
@@ -471,100 +641,58 @@ function TodayPage() {
                       aria-label={done ? "Mark incomplete" : "Mark complete"}
                     >
                       {done ? (
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 12 12"
-                          fill="none"
-                          className="animate-[scale-check_0.3s_ease-out]"
-                        >
-                          <path
-                            d="M2.5 6L5 8.5L9.5 4"
-                            stroke="white"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
+                        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" className="animate-[scale-check_0.3s_ease-out]">
+                          <path d="M2.5 6L5 8.5L9.5 4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       ) : (
-                        <div
-                          className="w-4 h-4 rounded-full scale-0 group-hover:scale-50 transition-transform duration-300"
-                          style={{ background: h.color }}
-                        />
+                        <div className="w-4 h-4 rounded-full scale-0 group-hover:scale-50 transition-transform duration-300" style={{ background: h.color }}/>
                       )}
                     </button>
 
                     <div className="flex flex-col items-center gap-1 shrink-0">
-                      <div
-                        className="w-10 h-10 flex items-center justify-center rounded-xl text-xl"
-                        style={{
-                          background: "color-mix(in oklab, var(--primary) 12%, var(--muted))",
-                        }}
-                        aria-hidden
-                      >
+                      <div className="w-10 h-10 flex items-center justify-center rounded-xl text-xl" style={{ background: "color-mix(in oklab, var(--primary) 12%, var(--muted))" }} aria-hidden>
                         {h.emoji}
                       </div>
                       <FrequencyDots habit={h} />
                     </div>
 
                     {done ? (
-                      <span
-                        className="flex-1 min-w-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium tracking-tight"
-                        style={{
-                          background: `color-mix(in oklab, ${h.color} 15%, transparent)`,
-                          color: h.color,
-                        }}
-                      >
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 12 12"
-                          fill="none"
-                          className="shrink-0"
-                        >
-                          <path
-                            d="M2.5 6L5 8.5L9.5 4"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
+                      <span className="flex-1 min-w-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium tracking-tight" style={{ background: `color-mix(in oklab, ${h.color} 15%, transparent)`, color: h.color }}>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="shrink-0">
+                          <path d="M2.5 6L5 8.5L9.5 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                         {h.name}
                       </span>
                     ) : (
-                      <span className="flex-1 min-w-0 text-lg font-light tracking-tight text-foreground">
-                        {h.name}
-                      </span>
+                      <span className="flex-1 min-w-0 text-lg font-light tracking-tight text-foreground">{h.name}</span>
                     )}
 
                     {streak > 0 && (
-                      <span
-                        className="inline-flex items-center gap-1.5 text-[11px] font-medium tracking-tight px-3 py-1.5 rounded-full border shrink-0"
-                        style={{
-                          borderColor: `color-mix(in oklab, ${h.color} 35%, transparent)`,
-                          color: h.color,
-                          background: `color-mix(in oklab, ${h.color} 8%, transparent)`,
-                        }}
-                      >
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium tracking-tight px-3 py-1.5 rounded-full border shrink-0 relative" style={{ borderColor: `color-mix(in oklab, ${h.color} 35%, transparent)`, color: h.color, background: `color-mix(in oklab, ${h.color} 8%, transparent)` }}>
                         <span className="text-sm leading-none">🔥</span>
                         {streak} {streak === 1 ? "day" : "days"}
+                        {freeze.available > 0 && (
+                          <span style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", background: "var(--card)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "var(--accent)", lineHeight: 1 }} title={`${freeze.available} freeze${freeze.available !== 1 ? "s" : ""} available`}>❄</span>
+                        )}
                       </span>
                     )}
                   </div>
                 </li>
               );
             })}
-            {habits.length === 0 && (
-              <li className="py-10 text-center text-sm text-muted-foreground">
-                Start with a small ritual.{" "}
-                <Link to="/habits" className="underline text-foreground">
-                  Add a habit
-                </Link>
-                .
-              </li>
-            )}
           </ul>
+          )}
+          </>
+          )}
+          {habits.length === 0 && (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              Start your first streak.{" "}
+              <Link to="/habits" className="underline text-foreground">
+                Add a habit
+              </Link>
+              .
+            </div>
+          )}
         </section>
 
         {/* Flourish */}
@@ -580,8 +708,23 @@ function TodayPage() {
             Today's Rhythms &middot; small steps, every day
           </p>
         </footer>
+          </>
+        )}
       </div>
       {showAdd && <QuickAddHabit onClose={() => setShowAdd(false)} />}
+      {freezeTarget && (
+        <FreezeDialog
+          habitName={freezeTarget.name}
+          onConfirm={() => {
+            freeze.useFreeze();
+            setFreezeTarget(null);
+          }}
+          onCancel={() => {
+            toggle.mutate(freezeTarget.id);
+            setFreezeTarget(null);
+          }}
+        />
+      )}
     </main>
   );
 }

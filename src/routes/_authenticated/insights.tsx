@@ -119,6 +119,61 @@ function InsightsPage() {
       .filter((p) => p.streak > 0)
       .sort((a, b) => b.streak - a.streak);
 
+    // Per-habit weekly trend (last 12 weeks for sparklines)
+    const habitTrends = habits.map((h) => {
+      const dates = byHabit.get(h.id) ?? [];
+      const points: number[] = [];
+      for (let w = 11; w >= 0; w--) {
+        const weekStart = addDays(today, -(w * 7 + parseLocal(today).getDay()));
+        let count = 0;
+        for (let d = 0; d < 7; d++) {
+          if (dates.includes(addDays(weekStart, d))) count++;
+        }
+        points.push(count);
+      }
+      return { id: h.id, name: h.name, emoji: (h as any).emoji, color: (h as any).color || "var(--chart-1)", points };
+    });
+
+    // Habit comparison for bar chart (by completion rate last 30 days)
+    const habitComparison = habits.map((h) => {
+      const dates = byHabit.get(h.id) ?? [];
+      const last30Count = dates.filter((d) => d >= addDays(today, -30)).length;
+      return { id: h.id, name: h.name, emoji: (h as any).emoji, rate: Math.min(100, Math.round((last30Count / 30) * 100)) };
+    }).sort((a, b) => b.rate - a.rate);
+
+    // Rhythm Connections — day-level co-occurrence
+    const connections: { habitA: typeof habits[0]; habitB: typeof habits[0]; delta: number; baselineA: number; conditional: number }[] = [];
+    if (habits.length >= 2) {
+      const allDates = new Set<string>();
+      for (const l of logs) allDates.add(l.log_date);
+      const dateList = Array.from(allDates).sort();
+      for (let i = 0; i < habits.length; i++) {
+        for (let j = i + 1; j < habits.length; j++) {
+          const hA = habits[i];
+          const hB = habits[j];
+          const datesA = new Set(byHabit.get(hA.id) ?? []);
+          const datesB = new Set(byHabit.get(hB.id) ?? []);
+          let overlapDays = 0;
+          let bothDone = 0;
+          let aDone = 0;
+          for (const d of dateList) {
+            const aHas = datesA.has(d);
+            const bHas = datesB.has(d);
+            if (aHas || bHas) overlapDays++;
+            if (aHas) aDone++;
+            if (aHas && bHas) bothDone++;
+          }
+          if (overlapDays < 14) continue;
+          const baselineA = aDone / Math.max(1, overlapDays);
+          const conditional = bothDone / Math.max(1, aDone);
+          const delta = conditional - baselineA;
+          if (Math.abs(delta) < 0.08) continue;
+          connections.push({ habitA: hA, habitB: hB, delta, baselineA, conditional });
+        }
+      }
+      connections.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+    }
+
     return {
       perHabit,
       months,
@@ -131,6 +186,9 @@ function InsightsPage() {
       bestDow,
       worstDow,
       streakBoard,
+      habitTrends,
+      habitComparison,
+      connections,
     };
   }, [habits, logs, today]);
 
@@ -142,6 +200,12 @@ function InsightsPage() {
         today,
       ),
     [logs, today],
+  );
+
+  // Seeded skeleton heatmap for empty states
+  const seededHeatmap = useMemo(
+    () => buildHeatmap([], today),
+    [today],
   );
 
   const rec = useMutation({
@@ -185,56 +249,61 @@ function InsightsPage() {
 
         {/* Weekly completion chart */}
         <section className="mb-12">
-          <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">
+          <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4 font-mono">
             Weekly rhythm
           </h2>
           {noData ? (
             <p className="text-sm text-muted-foreground italic">No data yet.</p>
           ) : (
-            <div className="flex items-end gap-2 h-28">
+            <div className="flex items-end gap-2" style={{ minHeight: 140 }}>
               {stats.weeks.map((w, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
-                  <div className="w-full flex-1 flex items-end">
+                  <div className="w-full flex items-end" style={{ height: 140, marginTop: -18 }}>
                     <div
                       className="w-full rounded-t transition-all duration-500"
                       style={{
-                        height: `${Math.max(4, (w.total / maxWeek) * 100)}%`,
-                        background:
-                          i === stats.weeks.length - 1
+                        height: `${Math.max(6, Math.min(100, (w.total / (maxWeek || 1)) * 100))}%`,
+                        minHeight: w.total === 0 ? 4 : 6,
+                        background: w.total === 0
+                          ? "color-mix(in oklab, var(--primary) 15%, transparent)"
+                          : i === stats.weeks.length - 1
                             ? "var(--primary)"
-                            : "color-mix(in oklab, var(--foreground) 30%, transparent)",
+                            : `color-mix(in oklab, var(--primary) ${50 + (w.total / (maxWeek || 1)) * 40}%, transparent)`,
                       }}
                     />
                   </div>
-                  <span className="text-[9px] text-muted-foreground leading-tight">{w.label}</span>
+                  <span className="font-mono text-[9px] text-muted-foreground leading-tight">{w.label}</span>
                 </div>
               ))}
             </div>
           )}
-          <p className="text-[10px] text-muted-foreground tracking-wide mt-2">
-            Check-ins per week &middot; current week highlighted
-          </p>
         </section>
 
         {/* Monthly bars */}
         <section className="mb-12">
-          <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">
+          <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4 font-mono">
             Last 6 months
           </h2>
           {noData ? (
             <p className="text-sm text-muted-foreground italic">No data yet.</p>
           ) : (
-            <div className="flex items-end gap-3 h-32">
+            <div className="flex items-end gap-3 sm:gap-4" style={{ minHeight: 128 }}>
               {stats.months.map((m) => (
                 <div key={m.key} className="flex-1 flex flex-col items-center gap-2">
-                  <div className="w-full flex-1 flex items-end">
+                  <div className="w-full flex items-end" style={{ height: 128 }}>
                     <div
-                      className="w-full rounded-t bg-primary/70"
-                      style={{ height: `${(m.total / maxMonth) * 100}%`, minHeight: "2px" }}
+                      className="w-full rounded-t transition-all duration-500"
+                      style={{
+                        height: `${Math.max(6, (m.total / (maxMonth || 1)) * 100)}%`,
+                        minHeight: m.total === 0 ? 4 : 6,
+                        background: m.total === 0
+                          ? "color-mix(in oklab, var(--primary) 15%, transparent)"
+                          : "var(--primary)",
+                      }}
                     />
                   </div>
-                  <span className="text-[10px] text-muted-foreground">{m.label}</span>
-                  <span className="text-[11px] text-foreground">{m.total}</span>
+                  <span className="font-mono text-[10px] text-muted-foreground uppercase">{m.label}</span>
+                  <span className="font-mono text-[11px] text-foreground">{m.total}</span>
                 </div>
               ))}
             </div>
@@ -243,45 +312,47 @@ function InsightsPage() {
 
         {/* Day-of-week consistency */}
         <section className="mb-12">
-          <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">
+          <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4 font-mono">
             Day consistency
           </h2>
           {noData ? (
             <p className="text-sm text-muted-foreground italic">No data yet.</p>
           ) : (
-            <div className="grid grid-cols-7 gap-1 sm:gap-2">
+            <div className="grid grid-cols-7 gap-1 sm:gap-3">
               {stats.dowCount.map((count, i) => {
                 const isBest = i === stats.bestDow;
                 const isWorst = count > 0 && i === stats.worstDow;
+                const barH = Math.max(4, (count / (maxDow || 1)) * 96);
                 return (
                   <div key={i} className="flex flex-col items-center gap-1.5">
-                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                    <div className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
                       {DAY_NAMES[i].slice(0, 2)}
                     </div>
-                    <div className="w-full flex flex-col items-center gap-1">
-                      <div
-                        className="w-full rounded"
-                        style={{
-                          height: `${Math.max(4, (count / maxDow) * 64)}px`,
-                          background: isBest
-                            ? "var(--primary)"
-                            : isWorst
-                              ? "color-mix(in oklab, var(--destructive) 50%, transparent)"
-                              : "color-mix(in oklab, var(--foreground) 25%, transparent)",
-                        }}
-                      />
-                      <span className="text-[11px] text-foreground font-medium">{count}</span>
+                    <div className="w-full flex flex-col items-center gap-1" style={{ height: 96 }}>
+                      <div className="flex-1 flex items-end w-full">
+                        <div
+                          className="w-full rounded-t"
+                          style={{
+                            height: `${barH}px`,
+                            minHeight: count === 0 ? 4 : 4,
+                            background: isBest
+                              ? "var(--primary)"
+                              : `color-mix(in oklab, var(--primary) 15%, transparent)`,
+                          }}
+                        />
+                      </div>
                     </div>
-                    {isBest && (
-                      <span className="text-[9px] text-primary tracking-wide font-medium">
-                        Best
-                      </span>
-                    )}
-                    {isWorst && (
-                      <span className="text-[9px] text-destructive tracking-wide font-medium">
-                        Low
-                      </span>
-                    )}
+                    <span className="font-mono text-[11px] text-foreground font-medium">{count}</span>
+                    <span
+                      className="font-mono text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border"
+                      style={{
+                        color: isBest ? "var(--primary)" : "var(--muted-foreground)",
+                        borderColor: isBest ? "var(--primary)" : "var(--border)",
+                        opacity: isBest || isWorst ? 1 : 0,
+                      }}
+                    >
+                      {isBest ? "Best" : isWorst ? "Low" : "\u00A0"}
+                    </span>
                   </div>
                 );
               })}
@@ -289,22 +360,158 @@ function InsightsPage() {
           )}
         </section>
 
+        {/* Per-habit trend sparklines */}
+        {!noData && stats.habitTrends.length > 0 && (
+          <section className="mb-12">
+            <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">
+              Habit trends
+            </h2>
+            <div className="space-y-3">
+              {stats.habitTrends.map((ht) => {
+                const maxVal = Math.max(1, ...ht.points);
+                const avg = ht.points.reduce((a, b) => a + b, 0) / ht.points.length;
+                return (
+                  <div
+                    key={ht.id}
+                    className="rounded-xl border px-4 py-3"
+                    style={{ background: "var(--card)", borderColor: "var(--border)" }}
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-lg">{ht.emoji}</span>
+                      <span className="text-sm font-medium text-foreground flex-1">{ht.name}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{avg.toFixed(1)}/wk avg</span>
+                    </div>
+                    <svg width="100%" height="32" style={{ overflow: "visible" }}>
+                      {/* Average reference line */}
+                      <line
+                        x1="0"
+                        y1={32 - (avg / maxVal) * 28 - 2}
+                        x2="100%"
+                        y2={32 - (avg / maxVal) * 28 - 2}
+                        stroke="var(--muted-foreground)"
+                        strokeWidth="0.5"
+                        strokeDasharray="3 2"
+                        opacity="0.5"
+                      />
+                      {/* Area fill */}
+                      <path
+                        d={`M0,32 L${ht.points
+                          .map(
+                            (v, i) =>
+                              `${(i / (ht.points.length - 1)) * 100}%,${32 - Math.max(2, (v / maxVal) * 28)}`,
+                          )
+                          .join(" L")} L100%,32 Z`}
+                        fill="var(--chart-1)"
+                        opacity="0.12"
+                      />
+                      {/* Line */}
+                      <polyline
+                        points={ht.points
+                          .map(
+                            (v, i) =>
+                              `${(i / (ht.points.length - 1)) * 100},${32 - Math.max(2, (v / maxVal) * 28)}`,
+                          )
+                          .join(" ")}
+                        fill="none"
+                        stroke="var(--chart-1)"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Rhythm Connections */}
+        {!noData && stats.connections.length > 0 && (
+          <section className="mb-12">
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground mb-4">
+              Rhythm Connections
+            </h2>
+            <div className="rounded-xl border" style={{ background: "var(--card)", borderColor: "var(--border)", padding: 0 }}>
+              {stats.connections.slice(0, 5).map((c, i) => {
+                const isPositive = c.delta > 0;
+                return (
+                  <div
+                    key={`${c.habitA.id}-${c.habitB.id}`}
+                    className="flex items-center gap-3 px-5 py-3.5"
+                    style={{
+                      borderBottom: i < Math.min(4, stats.connections.length - 1) ? "1px solid var(--border)" : "none",
+                    }}
+                  >
+                    <span className="text-lg">{(c.habitA as any).emoji || "📌"}</span>
+                    <span className="text-sm font-medium text-foreground">{(c.habitA as any).name}</span>
+                    <svg width="32" height="16" style={{ flexShrink: 0 }}>
+                      <line x1="0" y1="8" x2="24" y2="8" stroke="var(--accent)" strokeWidth="1.5" opacity="0.5" />
+                      <polygon points="24,8 18,4 18,12" fill="var(--accent)" opacity="0.5" />
+                    </svg>
+                    <span className="text-lg">{(c.habitB as any).emoji || "📌"}</span>
+                    <span className="text-sm font-medium text-foreground">{(c.habitB as any).name}</span>
+                    <span
+                      className="font-mono text-xs rounded-full px-2.5 py-1 ml-auto"
+                      style={{
+                        background: isPositive ? "color-mix(in oklab, var(--primary) 15%, transparent)" : "color-mix(in oklab, var(--accent) 15%, transparent)",
+                        color: isPositive ? "var(--primary)" : "var(--accent)",
+                      }}
+                    >
+                      {isPositive ? "+" : ""}{Math.round(c.delta * 100)}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Habit comparison bars */}
+        {!noData && stats.habitComparison.length > 0 && (
+          <section className="mb-12">
+            <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">
+              Completion ranking
+            </h2>
+            <div className="space-y-2">
+              {stats.habitComparison.map((hc, i) => (
+                <div key={hc.id} className="flex items-center gap-3">
+                  <span className="text-lg w-7 text-center">{hc.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-foreground">{hc.name}</span>
+                      <span className="font-mono text-xs" style={{ color: i === 0 ? "var(--chart-1)" : "var(--muted-foreground)" }}>
+                        {hc.rate}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full" style={{ background: "var(--muted)", overflow: "hidden" }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.max(4, hc.rate)}%`,
+                          background: i === 0 ? "var(--chart-1)" : "var(--muted-foreground)",
+                          opacity: i === 0 ? 1 : 0.5,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Full history heatmap */}
         <section className="mb-12">
           <h2 className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">
             Full rhythm
           </h2>
           {noData ? (
-            <div
-              className="rounded-2xl border border-dashed py-10 px-6 text-center"
-              style={{ borderColor: "color-mix(in oklab, var(--foreground) 15%, transparent)" }}
-            >
-              <p className="font-serif italic text-lg text-foreground/50">
-                Your full rhythm appears here as you build consistency.
-              </p>
+            <div className="opacity-[0.12]">
+              <Heatmap grid={seededHeatmap} />
             </div>
           ) : (
-            <div className="overflow-x-auto pb-2">
+            <div className="pb-2">
               <Heatmap grid={heatmap} />
             </div>
           )}
@@ -444,16 +651,14 @@ function Stat({
   delta?: number;
 }) {
   return (
-    <div className="rounded-xl border border-border p-4">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="mt-2 text-3xl font-serif italic text-foreground">
+    <div className="rounded-xl border border-border p-4" style={{ background: "var(--card)" }}>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">{label}</div>
+      <div className="mt-2 font-mono text-[32px] text-foreground leading-none">
         {value}
-        {suffix && <span className="text-lg">{suffix}</span>}
+        {suffix && <span className="ml-1 text-sm text-muted-foreground font-mono">{suffix}</span>}
       </div>
       {delta !== undefined && delta !== 0 && (
-        <div
-          className={`text-[11px] mt-1 ${delta > 0 ? "text-foreground" : "text-muted-foreground"}`}
-        >
+        <div className={`font-mono text-[11px] mt-1 ${delta > 0 ? "text-primary" : "text-muted-foreground"}`}>
           {delta > 0 ? "+" : ""}
           {delta} vs last
         </div>
@@ -465,10 +670,15 @@ function Stat({
 // --- Heatmap helpers ---
 
 function buildHeatmap(dates: string[], today: string) {
+  // Use the last date with actual data as anchor, or fallback to today
+  const sortedDates = [...new Set(dates)].sort();
+  const anchorDate = sortedDates.length > 0 ? sortedDates[sortedDates.length - 1] : today;
+  const endDate = anchorDate < "2025-01-01" ? anchorDate : today < "2025-01-01" ? today : anchorDate;
+
   const set = new Set(dates);
   const weeks: { date: string; count: number }[][] = [];
   const WEEKS = 52;
-  const start = addDays(today, -(WEEKS * 7 - 1));
+  const start = addDays(endDate, -(WEEKS * 7 - 1));
   const startDate = parseLocal(start);
   const dayOfWeek = startDate.getDay();
   const alignedStart = addDays(start, -dayOfWeek);
@@ -478,7 +688,7 @@ function buildHeatmap(dates: string[], today: string) {
   for (let i = 0; i < totalDays; i++) {
     const d = addDays(alignedStart, i);
     cells.push({ date: d, count: set.has(d) ? 1 : 0 });
-    if (d === today) break;
+    if (d === endDate) break;
   }
   const countByDate = new Map<string, number>();
   for (const d of dates) countByDate.set(d, (countByDate.get(d) ?? 0) + 1);
@@ -500,16 +710,28 @@ function Heatmap({ grid }: { grid: { date: string; count: number }[][] }) {
   const today = todayLocal();
   return (
     <div className="flex gap-[3px]">
+      <div className="flex flex-col gap-[3px] mr-1.5">
+        {["M", "W", "F"].map((l) => (
+          <span key={l} className="text-[8px] text-muted-foreground leading-[13px] w-3 text-right">{l}</span>
+        ))}
+      </div>
       {grid.map((week, wi) => (
         <div key={wi} className="flex flex-col gap-[3px]">
           {week.map((cell) => {
             const isFuture = cell.date > today;
-            const intensity = cell.count === 0 ? 0 : Math.min(4, Math.ceil((cell.count / max) * 4));
+            const ratio = cell.count / max;
+            let intensity = 0;
+            if (cell.count > 0) {
+              if (ratio <= 0.25) intensity = 1;
+              else if (ratio <= 0.5) intensity = 2;
+              else if (ratio <= 0.75) intensity = 3;
+              else intensity = 4;
+            }
             const bg = isFuture
               ? "transparent"
               : intensity === 0
                 ? "var(--muted)"
-                : `color-mix(in oklab, var(--primary) ${intensity * 22}%, var(--muted))`;
+                : `color-mix(in oklab, var(--primary) ${intensity * 20}%, var(--muted))`;
             return (
               <div
                 key={cell.date}

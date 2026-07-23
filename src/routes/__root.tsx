@@ -80,22 +80,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "Today's Rhythms — a warm, editorial-style habit tracker. Daily check-ins, streak tracking, heatmaps, and personalized insights.",
+          "Today's Rhythms — build streaks, track daily habits, and watch your consistency grow. Heatmaps, charts, and data-driven insights.",
       },
-      { name: "theme-color", content: "oklch(0.19 0.006 70)" },
+      { name: "theme-color", content: "oklch(0.15 0.018 262)" },
       { name: "robots", content: "index, follow" },
-      { property: "og:title", content: "Today's Rhythms — A Quiet Habit Tracker" },
+      { property: "og:title", content: "Today's Rhythms — Build Better Habits" },
       {
         property: "og:description",
         content:
-          "A warm, single-column journal for daily rituals. Track streaks, see your rhythm, and reflect with gentle insight.",
+          "Track daily habits with precision. Streaks, heatmaps, and charts that show your momentum.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "Today's Rhythms" },
       {
         name: "twitter:description",
-        content: "A calm, editorial habit tracker. Build streaks, track daily rituals, and watch your rhythm grow.",
+        content:
+          "Build streaks, track daily habits, and watch your consistency grow with data-driven insights.",
       },
     ],
     links: [
@@ -105,7 +106,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Work+Sans:wght@300;400;500;600&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Work+Sans:wght@300;400;500;600;700&display=swap",
       },
     ],
   }),

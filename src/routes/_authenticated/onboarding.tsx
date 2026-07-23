@@ -56,8 +56,8 @@ function OnboardingPage() {
       subtitle: "Your name will be used to personalize your experience.",
     },
     {
-      title: "Add your first ritual",
-      subtitle: "Pick a habit to start tracking. You can always add more later.",
+      title: "Start your first streak",
+      subtitle: "Pick a habit to track. You can always add more later.",
     },
     {
       title: "You're all set!",
