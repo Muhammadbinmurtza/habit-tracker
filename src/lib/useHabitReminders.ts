@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listHabits } from "@/lib/habits.functions";
@@ -25,7 +25,6 @@ function notificationsAllowedByPagePolicy() {
   };
   const policy = policyDocument.permissionsPolicy ?? policyDocument.featurePolicy;
   if (!policy?.allowsFeature) return true;
-
   try {
     return policy.allowsFeature("notifications");
   } catch {
@@ -35,9 +34,7 @@ function notificationsAllowedByPagePolicy() {
 
 function todayKey() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function loadFired(): Record<string, string> {
@@ -69,22 +66,26 @@ export function useHabitReminders() {
     queryFn: () => listFn() as Promise<HabitRow[]>,
   });
 
+  const audioCtx = useRef<AudioContext | null>(null);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!("Notification" in window)) return;
+
+    try {
+      audioCtx.current = new AudioContext();
+    } catch {
+      // Audio not supported
+    }
 
     let fired = loadFired();
 
     const tick = () => {
-      if (!notificationsAllowedByPagePolicy()) return;
-      if (Notification.permission !== "granted") return;
       const now = new Date();
       const hh = String(now.getHours()).padStart(2, "0");
       const mm = String(now.getMinutes()).padStart(2, "0");
       const current = `${hh}:${mm}`;
       const today = todayKey();
 
-      // Reset if day rolled over
       const anyStale = Object.values(fired).some((d) => d !== today);
       if (anyStale) {
         fired = {};
@@ -93,19 +94,47 @@ export function useHabitReminders() {
       for (const h of habits) {
         if (!h.reminder_time) continue;
         const t = h.reminder_time.slice(0, 5);
-        // Fire if the reminder time has passed today and hasn't fired yet.
-        // This makes it resilient to closed tabs / missed 30s ticks.
         if (t > current) continue;
         if (fired[h.id] === today) continue;
-        try {
-          new Notification(`${h.emoji} ${h.name}`, {
-            body: "Time for your habit — a small rhythm keeps the streak alive.",
-            tag: `habit-${h.id}-${today}`,
-          });
-        } catch {
-          // ignore
-        }
+
+        // Always fire — alarm plays regardless of notification permission
         fired[h.id] = today;
+
+        // Play audible alarm
+        if (audioCtx.current) {
+          try {
+            const notes = [880, 660, 880, 660, 880, 660, 880, 1100];
+            const noteLength = 0.12;
+            const gap = 0.08;
+            notes.forEach((freq, i) => {
+              const osc = audioCtx.current!.createOscillator();
+              const gain = audioCtx.current!.createGain();
+              osc.type = "triangle";
+              osc.frequency.value = freq;
+              const startTime = audioCtx.current!.currentTime + i * (noteLength + gap);
+              gain.gain.setValueAtTime(0.3, startTime);
+              gain.gain.exponentialRampToValueAtTime(0.001, startTime + noteLength);
+              osc.connect(gain);
+              gain.connect(audioCtx.current!.destination);
+              osc.start(startTime);
+              osc.stop(startTime + noteLength);
+            });
+          } catch {
+            // ignore audio errors
+          }
+        }
+
+        // Also show browser notification
+        if (notificationsAllowedByPagePolicy() && "Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification(`${h.emoji} ${h.name}`, {
+              body: "Time for your habit — a small rhythm keeps the streak alive.",
+              tag: `habit-${h.id}-${today}`,
+            });
+          } catch {
+            // notification failed
+          }
+        }
       }
 
       saveFired(fired);
